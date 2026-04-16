@@ -1,10 +1,10 @@
 import simpy
 import math
 import os
-from google import genai  # Actualizado al nuevo SDK
+from google import genai
 from dotenv import load_dotenv
+from datetime import datetime
 
-# Cargar variables de entorno (API Key)
 load_dotenv()
 
 class Cliente:
@@ -79,18 +79,29 @@ class AnalistaIA:
         if not self.disponible:
             return "Análisis no disponible sin API Key."
         
+        # Generar la fecha actual dinámicamente en español
+        meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        hoy = datetime.now()
+        fecha_formateada = f"{hoy.day} de {meses[hoy.month - 1]} de {hoy.year}"
+
         prompt = (
             f"Actúa como un Consultor Senior en Logística y Optimización de Procesos. "
-            f"Analiza los resultados de esta simulación de transporte para la Facultad de Ingeniería.\n\n"
+            f"Analiza los resultados de esta simulación de transporte para una evaluación académica.\n\n"
+            f"DATOS PARA EL ENCABEZADO DEL INFORME:\n"
+            f"- Fecha: {fecha_formateada}\n"
+            f"- De: Nelson Guerrero (Estudiante de 8vo Semestre, Ingeniería en Computación)\n"
+            f"- Para: Facultad de Ingeniería, Universidad José Antonio Páez (UJAP)\n"
+            f"- Asunto: Análisis de Simulación Básica de Rutas de Camiones (Tarea 3)\n\n"
             f"INDICADORES CLAVE:\n"
             f"- Distancia: {distancia:.2f} km\n"
             f"- Tiempo Total: {tiempo:.2f} min\n"
             f"LOGS DETALLADOS DE LA OPERACIÓN:\n{contexto_completo}\n\n"
-            f"TAREA: Proporciona un informe profesional que incluya:\n"
-            f"1. Evaluación de la eficiencia de la ruta (Relación distancia/tiempo).\n"
-            f"2. Análisis del cumplimiento de la demanda.\n"
-            f"3. Una recomendación técnica avanzada (ej. Algoritmo de Ahorros de Clarke y Wright o Tabu Search) "
-            f"para optimizar estos resultados específicos."
+            f"TAREA: Proporciona un informe profesional en formato Markdown que incluya:\n"
+            f"1. Un encabezado formal usando estrictamente los DATOS PARA EL ENCABEZADO proporcionados.\n"
+            f"2. Evaluación de la eficiencia de la ruta (Relación distancia/tiempo).\n"
+            f"3. Análisis del cumplimiento de la demanda (revisa los logs para ver si faltó carga).\n"
+            f"4. Una recomendación técnica avanzada (ej. Algoritmo de Ahorros de Clarke y Wright o VRP con ventanas de tiempo) para optimizar estos resultados."
+            f"Solamente envia el informe en formato Markdown, sin explicaciones adicionales ni texto fuera del formato solicitado."
         )
         
         print("\n[IA] Consultando a la Inteligencia Artificial...")
@@ -148,17 +159,26 @@ def principal():
     print("\n=== INICIANDO SIMULACIÓN DE FLOTA ===")
     env.run()
 
-    # --- Consolidación de Resultados para la IA ---
     distancia_flota = sum(c.distancia_total for c in camiones)
     contexto_ia = "\n".join(historial_logs)
     
     analista = AnalistaIA()
     analisis = analista.generar_conclusion(distancia_flota, env.now, "Múltiples entregas", contexto_ia)
     
-    print("\n" + "="*40)
-    print("INFORME DE OPTIMIZACIÓN DE FLOTA (IA)")
-    print("="*40)
-    print(analisis)
+    carpeta_resultados = "resultados"
+    os.makedirs(carpeta_resultados, exist_ok=True)
+    
+    fecha_archivo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    nombre_archivo = f"resultado_{fecha_archivo}.md"
+    ruta_completa = os.path.join(carpeta_resultados, nombre_archivo)
+    
+    with open(ruta_completa, "w", encoding="utf-8") as archivo:
+        archivo.write(analisis)
+        
+    print("\n" + "="*50)
+    print(f"✅ ¡ÉXITO! El informe ha sido generado profesionalmente.")
+    print(f"📁 Se ha guardado en: {ruta_completa}")
+    print("="*50)
 
 if __name__ == "__main__":
     principal()
