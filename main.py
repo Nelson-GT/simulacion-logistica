@@ -1,7 +1,7 @@
 import simpy
 import math
 import os
-import google.generativeai as genai
+from google import genai  # Actualizado al nuevo SDK
 from dotenv import load_dotenv
 
 # Cargar variables de entorno (API Key)
@@ -17,14 +17,16 @@ class Cliente:
 
 class Camion:
     """Modela el camión que realiza las entregas y lleva el registro de su recorrido."""
-    def __init__(self, env, capacidad, velocidad):
+    def __init__(self, env, capacidad, velocidad, log_func, id_camion):
         self.env = env
+        self.id_camion = id_camion
         self.capacidad = capacidad
         self.carga_actual = capacidad
         self.velocidad = velocidad  # unidades de distancia por minuto
         self.ubicacion = (0, 0)     # Depósito inicial
         self.distancia_total = 0.0
         self.registro_entregas = []
+        self.log = log_func
 
     def viajar(self, destino_x, destino_y):
         """Simula el tiempo de viaje basado en la distancia euclidiana."""
@@ -39,12 +41,13 @@ class Camion:
 
     def realizar_ruta(self, ruta_clientes):
         """Proceso principal de SimPy: visita cada cliente en orden y regresa al depósito."""
-        print(f"[{self.env.now:.2f} min] 🚚 Camión sale del depósito (0,0) con {self.carga_actual} unidades.")
+        # Se unificó el print y el guardado en un solo llamado a self.log
+        self.log(f"[{self.env.now:.2f} min] 🚚 Camión {self.id_camion} sale del depósito (0,0) con {self.carga_actual} unidades.")
 
         for cliente in ruta_clientes:
             # 1. Viaje hacia el cliente
             yield self.env.process(self.viajar(cliente.x, cliente.y))
-            print(f"[{self.env.now:.2f} min] 📍 Llega al Cliente {cliente.id_cliente} en ({cliente.x}, {cliente.y}).")
+            self.log(f"[{self.env.now:.2f} min] 📍 Camión {self.id_camion} llega al Cliente {cliente.id_cliente} en ({cliente.x}, {cliente.y}).")
 
             # 2. Proceso de entrega en el cliente (tiempo fijo de 15 minutos por descarga)
             tiempo_descarga = 15
@@ -53,13 +56,13 @@ class Camion:
             if self.carga_actual >= cliente.demanda:
                 self.carga_actual -= cliente.demanda
                 self.registro_entregas.append(f"Cliente {cliente.id_cliente}: {cliente.demanda} uds")
-                print(f"[{self.env.now:.2f} min] 📦 Entregadas {cliente.demanda} uds. Carga restante: {self.carga_actual}")
+                self.log(f"[{self.env.now:.2f} min] 📦 Camión {self.id_camion} entregó {cliente.demanda} uds. Carga restante: {self.carga_actual}")
             else:
-                print(f"[{self.env.now:.2f} min] ⚠️ Carga insuficiente para Cliente {cliente.id_cliente}. Faltan {cliente.demanda - self.carga_actual} uds.")
+                self.log(f"[{self.env.now:.2f} min] ⚠️ Camión {self.id_camion} no tiene carga suficiente para Cliente {cliente.id_cliente}. Faltan {cliente.demanda - self.carga_actual} uds.")
 
         # 3. Regreso al depósito
         yield self.env.process(self.viajar(0, 0))
-        print(f"[{self.env.now:.2f} min] 🏠 Camión regresa al depósito.")
+        self.log(f"[{self.env.now:.2f} min] 🏠 Camión {self.id_camion} regresa al depósito.")
 
 class AnalistaIA:
     """Se encarga de enviar los resultados de la simulación a un LLM para obtener conclusiones."""
@@ -70,61 +73,91 @@ class AnalistaIA:
             print("\n[IA] ⚠️ No se detectó GEMINI_API_KEY en el archivo .env. Omitiendo análisis de IA.")
         else:
             self.disponible = True
-            genai.configure(api_key=api_key)
-            self.modelo = genai.GenerativeModel('gemini-2.5-flash-lite')
+            self.client = genai.Client(api_key=api_key)
 
-    def generar_conclusion(self, distancia, tiempo, entregas):
+    def generar_conclusion(self, distancia, tiempo, entregas, contexto_completo):
         if not self.disponible:
             return "Análisis no disponible sin API Key."
         
         prompt = (
-            f"Actúa como un experto en logística e investigación de operaciones. "
-            f"Acabo de ejecutar una simulación de ruteo de vehículos (VRP). "
-            f"Estos son los resultados finales del camión:\n"
-            f"- Distancia total recorrida: {distancia:.2f} km\n"
-            f"- Tiempo total de simulación: {tiempo:.2f} minutos\n"
-            f"- Entregas realizadas: {entregas}\n\n"
-            f"Basado en estos datos, redacta una breve conclusión (máximo 3 líneas) "
-            f"y una recomendación técnica para optimizar la ruta en futuras simulaciones."
+            f"Actúa como un Consultor Senior en Logística y Optimización de Procesos. "
+            f"Analiza los resultados de esta simulación de transporte para la Facultad de Ingeniería.\n\n"
+            f"INDICADORES CLAVE:\n"
+            f"- Distancia: {distancia:.2f} km\n"
+            f"- Tiempo Total: {tiempo:.2f} min\n"
+            f"LOGS DETALLADOS DE LA OPERACIÓN:\n{contexto_completo}\n\n"
+            f"TAREA: Proporciona un informe profesional que incluya:\n"
+            f"1. Evaluación de la eficiencia de la ruta (Relación distancia/tiempo).\n"
+            f"2. Análisis del cumplimiento de la demanda.\n"
+            f"3. Una recomendación técnica avanzada (ej. Algoritmo de Ahorros de Clarke y Wright o Tabu Search) "
+            f"para optimizar estos resultados específicos."
         )
         
         print("\n[IA] Consultando a la Inteligencia Artificial...")
         try:
-            respuesta = self.modelo.generate_content(prompt)
-            return respuesta.text
+            # Nuevo método de generación de contenido
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash-lite',
+                contents=prompt
+            )
+            return response.text
         except Exception as e:
             return f"Error al conectar con la API: {e}"
 
 def principal():
-    # 1. Preparar datos
-    clientes = [
-        Cliente(id_cliente=1, x=5, y=10, demanda=20),
-        Cliente(id_cliente=2, x=15, y=12, demanda=15),
-        Cliente(id_cliente=3, x=10, y=2, demanda=30),
-        Cliente(id_cliente=4, x=2, y=8, demanda=10)
-    ]
-
-    # 2. Inicializar entorno SimPy
-    env = simpy.Environment()
-    camion = Camion(env, capacidad=100, velocidad=1.0) # 1.0 km por minuto (60 km/h)
-
-    # 3. Asignar el proceso al entorno
-    env.process(camion.realizar_ruta(clientes))
-
-    # 4. Ejecutar simulación
-    print("=== INICIO DE LA SIMULACIÓN LOGÍSTICA ===")
-    env.run()
+    historial_logs = []
     
-    # 5. Imprimir resultados locales
-    print("\n=== RESULTADOS FINALES ===")
-    print(f"Distancia total recorrida: {camion.distancia_total:.2f} unidades (km)")
-    print(f"Tiempo total de simulación: {env.now:.2f} minutos")
-    print(f"Registro de entregas: {', '.join(camion.registro_entregas)}")
+    # Se simplificó la función logger para que simplemente imprima y guarde
+    def logger(mensaje):
+        print(mensaje)
+        historial_logs.append(mensaje)
 
-    # 6. Integración con IA
+    # --- Configuración de Clientes ---
+    n_clientes = int(input("¿Cuántos clientes desea simular?: "))
+    todos_los_clientes = []
+    for i in range(n_clientes):
+        print(f"\nDatos Cliente {i+1}:")
+        x = float(input(f"  Coordenada X: "))
+        y = float(input(f"  Coordenada Y: "))
+        demanda = int(input(f"  Demanda: "))
+        todos_los_clientes.append(Cliente(i+1, x, y, demanda))
+
+    # --- Configuración de la Flota de Camiones ---
+    n_camiones = int(input("\n¿Cuántos camiones tendrá la flota?: "))
+    camiones = []
+    env = simpy.Environment()
+
+    for i in range(n_camiones):
+        print(f"\nConfiguración Camión {i+1}:")
+        v_kmh = float(input(f"  Velocidad (km/h): "))
+        cap = int(input(f"  Capacidad de carga: "))
+        
+        # CORRECCIÓN: Se pasaron los parámetros por su nombre explícito (Keyword Arguments)
+        nuevo_camion = Camion(
+            env=env, 
+            capacidad=cap, 
+            velocidad=v_kmh/60, 
+            log_func=logger, 
+            id_camion=i+1
+        )
+        camiones.append(nuevo_camion)
+
+        clientes_asignados = todos_los_clientes[i::n_camiones] 
+        env.process(nuevo_camion.realizar_ruta(clientes_asignados))
+
+    print("\n=== INICIANDO SIMULACIÓN DE FLOTA ===")
+    env.run()
+
+    # --- Consolidación de Resultados para la IA ---
+    distancia_flota = sum(c.distancia_total for c in camiones)
+    contexto_ia = "\n".join(historial_logs)
+    
     analista = AnalistaIA()
-    analisis = analista.generar_conclusion(camion.distancia_total, env.now, camion.registro_entregas)
-    print("\n=== CONCLUSIÓN Y RECOMENDACIÓN DE LA IA ===")
+    analisis = analista.generar_conclusion(distancia_flota, env.now, "Múltiples entregas", contexto_ia)
+    
+    print("\n" + "="*40)
+    print("INFORME DE OPTIMIZACIÓN DE FLOTA (IA)")
+    print("="*40)
     print(analisis)
 
 if __name__ == "__main__":

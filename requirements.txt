@@ -1,3 +1,4 @@
 simpy
 google-generativeai
 python-dotenv
+google-genai
