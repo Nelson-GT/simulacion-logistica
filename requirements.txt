@@ -1,0 +1,3 @@
+simpy
+google-generativeai
+python-dotenv
