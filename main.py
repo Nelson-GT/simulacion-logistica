@@ -41,15 +41,12 @@ class Camion:
 
     def realizar_ruta(self, ruta_clientes):
         """Proceso principal de SimPy: visita cada cliente en orden y regresa al depósito."""
-        # Se unificó el print y el guardado en un solo llamado a self.log
         self.log(f"[{self.env.now:.2f} min] 🚚 Camión {self.id_camion} sale del depósito (0,0) con {self.carga_actual} unidades.")
 
         for cliente in ruta_clientes:
-            # 1. Viaje hacia el cliente
             yield self.env.process(self.viajar(cliente.x, cliente.y))
             self.log(f"[{self.env.now:.2f} min] 📍 Camión {self.id_camion} llega al Cliente {cliente.id_cliente} en ({cliente.x}, {cliente.y}).")
 
-            # 2. Proceso de entrega en el cliente (tiempo fijo de 15 minutos por descarga)
             tiempo_descarga = 15
             yield self.env.timeout(tiempo_descarga)
 
@@ -60,7 +57,6 @@ class Camion:
             else:
                 self.log(f"[{self.env.now:.2f} min] ⚠️ Camión {self.id_camion} no tiene carga suficiente para Cliente {cliente.id_cliente}. Faltan {cliente.demanda - self.carga_actual} uds.")
 
-        # 3. Regreso al depósito
         yield self.env.process(self.viajar(0, 0))
         self.log(f"[{self.env.now:.2f} min] 🏠 Camión {self.id_camion} regresa al depósito.")
 
@@ -79,7 +75,6 @@ class AnalistaIA:
         if not self.disponible:
             return "Análisis no disponible sin API Key."
         
-        # Generar la fecha actual dinámicamente en español
         meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
         hoy = datetime.now()
         fecha_formateada = f"{hoy.day} de {meses[hoy.month - 1]} de {hoy.year}"
@@ -106,7 +101,6 @@ class AnalistaIA:
         
         print("\n[IA] Consultando a la Inteligencia Artificial...")
         try:
-            # Nuevo método de generación de contenido
             response = self.client.models.generate_content(
                 model='gemini-2.5-flash-lite',
                 contents=prompt
@@ -118,12 +112,10 @@ class AnalistaIA:
 def principal():
     historial_logs = []
     
-    # Se simplificó la función logger para que simplemente imprima y guarde
     def logger(mensaje):
         print(mensaje)
         historial_logs.append(mensaje)
 
-    # --- Configuración de Clientes ---
     n_clientes = int(input("¿Cuántos clientes desea simular?: "))
     todos_los_clientes = []
     for i in range(n_clientes):
@@ -133,7 +125,6 @@ def principal():
         demanda = int(input(f"  Demanda: "))
         todos_los_clientes.append(Cliente(i+1, x, y, demanda))
 
-    # --- Configuración de la Flota de Camiones ---
     n_camiones = int(input("\n¿Cuántos camiones tendrá la flota?: "))
     camiones = []
     env = simpy.Environment()
@@ -143,7 +134,6 @@ def principal():
         v_kmh = float(input(f"  Velocidad (km/h): "))
         cap = int(input(f"  Capacidad de carga: "))
         
-        # CORRECCIÓN: Se pasaron los parámetros por su nombre explícito (Keyword Arguments)
         nuevo_camion = Camion(
             env=env, 
             capacidad=cap, 
